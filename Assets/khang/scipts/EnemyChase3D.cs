@@ -1,42 +1,43 @@
-
 using UnityEngine;
+using UnityEngine.AI;
 
+[RequireComponent(typeof(NavMeshAgent))]
 public class EnemyAI3D : MonoBehaviour
 {
     public Transform player;
 
     public float patrolSpeed = 2f;
     public float chaseSpeed = 4f;
-    public float rotateSpeed = 5f;
 
+    // Bán kính chọn điểm tuần tra ngẫu nhiên quanh vị trí hiện tại
+    public float patrolRadius = 10f;
+
+    // Vùng quét - giữ nguyên logic
+    // scanAngle = 360 nghĩa là quét toàn bộ quanh enemy (không cần quay mặt về hướng player).
+    // Vector3.Angle() tối đa trả về 180 nên điều kiện "angle > scanAngle/2" sẽ không bao giờ đúng khi scanAngle >= 360.
     public float scanDistance = 15f;
-    public float scanAngle = 180f;
-
-    public float endDistance = 2f;
+    public float scanAngle = 360f;
 
     private enum State
     {
         Patrol,
-        Chase,
-        End
+        Chase
     }
 
     private State currentState = State.Patrol;
 
-    private Vector3 patrolDirection;
+    private NavMeshAgent agent;
+
     private float patrolTimer;
+    private const float patrolInterval = 3f;
 
     void Start()
     {
-        patrolDirection = transform.forward;
-        patrolDirection.y = 0f;
+        agent = GetComponent<NavMeshAgent>();
+        agent.speed = patrolSpeed;
 
-        if (patrolDirection.sqrMagnitude < 0.01f)
-            patrolDirection = Vector3.forward;
-
-        patrolDirection.Normalize();
-
-        patrolTimer = 3f;
+        SetNewPatrolDestination();
+        patrolTimer = patrolInterval;
     }
 
     void Update()
@@ -44,14 +45,39 @@ public class EnemyAI3D : MonoBehaviour
         if (player == null)
             return;
 
+        bool playerDetected = CheckScan();
+
         if (currentState == State.Patrol)
         {
-            Patrol();
-            ScanPlayer();
+            if (playerDetected)
+            {
+                Debug.Log("ĐÃ QUÉT ĐƯỢC PLAYER!");
+
+                currentState = State.Chase;
+                agent.speed = chaseSpeed;
+            }
+            else
+            {
+                Patrol();
+            }
         }
         else if (currentState == State.Chase)
         {
-            ChasePlayer();
+            if (playerDetected)
+            {
+                // NavMeshAgent tự tính đường ngắn nhất tới player mỗi frame
+                ChasePlayer();
+            }
+            else
+            {
+                Debug.Log("MẤT DẤU PLAYER - QUAY VỀ TUẦN TRA");
+
+                currentState = State.Patrol;
+                agent.speed = patrolSpeed;
+
+                SetNewPatrolDestination();
+                patrolTimer = patrolInterval;
+            }
         }
     }
 
@@ -59,38 +85,48 @@ public class EnemyAI3D : MonoBehaviour
     {
         patrolTimer -= Time.deltaTime;
 
-        if (patrolTimer <= 0f)
+        bool reachedDestination =
+            !agent.pathPending &&
+            agent.remainingDistance <= agent.stoppingDistance;
+
+        if (patrolTimer <= 0f || reachedDestination)
         {
-            patrolDirection =
-                Quaternion.Euler(
-                    0f,
-                    UnityEngine.Random.Range(-120f, 120f),
-                    0f
-                ) * transform.forward;
-
-            patrolDirection.y = 0f;
-            patrolDirection.Normalize();
-
-            patrolTimer = 3f;
+            SetNewPatrolDestination();
+            patrolTimer = patrolInterval;
         }
-
-        Quaternion targetRotation =
-            Quaternion.LookRotation(patrolDirection);
-
-        transform.rotation =
-            Quaternion.RotateTowards(
-                transform.rotation,
-                targetRotation,
-                rotateSpeed * 50f * Time.deltaTime
-            );
-
-        transform.position +=
-            transform.forward *
-            patrolSpeed *
-            Time.deltaTime;
     }
 
-    void ScanPlayer()
+    void SetNewPatrolDestination()
+    {
+        Vector3 randomOffset =
+            UnityEngine.Random.insideUnitSphere * patrolRadius;
+
+        randomOffset.y = 0f;
+
+        Vector3 candidatePosition =
+            transform.position + randomOffset;
+
+        if (NavMesh.SamplePosition(
+                candidatePosition,
+                out NavMeshHit hit,
+                patrolRadius,
+                NavMesh.AllAreas))
+        {
+            agent.SetDestination(hit.position);
+        }
+    }
+
+    void ChasePlayer()
+    {
+        // agent.SetDestination dùng thuật toán A* trên NavMesh
+        // để tự tính quãng đường ngắn nhất tới player, tránh vật cản
+        agent.SetDestination(player.position);
+    }
+
+    // Giữ nguyên logic quét (khoảng cách + góc + linecast) như bản gốc,
+    // chỉ đổi từ việc tự set state sang trả về bool, để dùng chung được
+    // cho cả lúc phát hiện (Patrol) lẫn lúc kiểm tra mất dấu (Chase).
+    bool CheckScan()
     {
         Vector3 direction =
             player.position - transform.position;
@@ -101,7 +137,7 @@ public class EnemyAI3D : MonoBehaviour
             direction.magnitude;
 
         if (distance > scanDistance)
-            return;
+            return false;
 
         float angle =
             Vector3.Angle(
@@ -110,7 +146,7 @@ public class EnemyAI3D : MonoBehaviour
             );
 
         if (angle > scanAngle / 2f)
-            return;
+            return false;
 
         Vector3 origin =
             transform.position + Vector3.up;
@@ -127,56 +163,15 @@ public class EnemyAI3D : MonoBehaviour
             if (hit.transform == player ||
                 hit.transform.root == player.root)
             {
-                Debug.Log("ĐÃ QUÉT ĐƯỢC PLAYER!");
-
-                currentState = State.Chase;
+                return true;
             }
+
+            return false;
         }
         else
         {
-            currentState = State.Chase;
-
-            Debug.Log("ĐÃ QUÉT ĐƯỢC PLAYER!");
+            return true;
         }
-    }
-
-    void ChasePlayer()
-    {
-        Vector3 direction =
-            player.position - transform.position;
-
-        direction.y = 0f;
-
-        float distance =
-            direction.magnitude;
-
-        if (distance <= endDistance)
-        {
-            currentState = State.End;
-
-            Debug.Log("END GAME!");
-
-            return;
-        }
-
-        if (direction.sqrMagnitude > 0.01f)
-        {
-            Quaternion targetRotation =
-                Quaternion.LookRotation(direction);
-
-            transform.rotation =
-                Quaternion.RotateTowards(
-                    transform.rotation,
-                    targetRotation,
-                    rotateSpeed * 100f *
-                    Time.deltaTime
-                );
-        }
-
-        transform.position +=
-            transform.forward *
-            chaseSpeed *
-            Time.deltaTime;
     }
 
     void OnDrawGizmos()
