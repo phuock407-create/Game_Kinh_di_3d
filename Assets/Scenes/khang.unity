@@ -1808,6 +1808,7 @@ GameObject:
   - component: {fileID: 1023506020}
   - component: {fileID: 1023506019}
   - component: {fileID: 1023506024}
+  - component: {fileID: 1023506025}
   m_Layer: 0
   m_Name: Enemy
   m_TagString: Untagged
@@ -1827,12 +1828,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4afedd51e6d40ee4f900be3cebdc4887, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::EnemyChase3D
-  player: {fileID: 914363183}
+  player: {fileID: 564524648}
   patrolSpeed: 2
   chaseSpeed: 4
   patrolRadius: 10
   scanDistance: 15
-  scanAngle: 180
+  scanAngle: 100
 --- !u!136 &1023506020
 CapsuleCollider:
   m_ObjectHideFlags: 0
@@ -1951,6 +1952,21 @@ NavMeshAgent:
   m_BaseOffset: 0
   m_WalkableMask: 4294967295
   m_ObstacleAvoidanceType: 4
+--- !u!114 &1023506025
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1023506018}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 05581f3c5d012bb4ba318e434fa4e2a7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyHearing
+  player: {fileID: 564524648}
+  hearingRadius: 8
+  minPlayerSpeedToMakeNoise: 0.2
 --- !u!1 &1355458663
 GameObject:
   m_ObjectHideFlags: 0

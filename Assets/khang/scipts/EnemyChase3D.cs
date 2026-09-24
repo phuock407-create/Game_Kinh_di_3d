@@ -12,9 +12,8 @@ public class EnemyAI3D : MonoBehaviour
     // Bán kính chọn điểm tuần tra ngẫu nhiên quanh vị trí hiện tại
     public float patrolRadius = 10f;
 
-    // Vùng quét - giữ nguyên logic
+    // Vùng quét bằng mắt - giữ nguyên logic
     // scanAngle = 360 nghĩa là quét toàn bộ quanh enemy (không cần quay mặt về hướng player).
-    // Vector3.Angle() tối đa trả về 180 nên điều kiện "angle > scanAngle/2" sẽ không bao giờ đúng khi scanAngle >= 360.
     public float scanDistance = 15f;
     public float scanAngle = 360f;
 
@@ -28,6 +27,9 @@ public class EnemyAI3D : MonoBehaviour
 
     private NavMeshAgent agent;
 
+    // Script riêng phụ trách nghe tiếng bước chân - có thể không gắn (để null) nếu chưa cần tính năng này
+    private EnemyHearing hearing;
+
     private float patrolTimer;
     private const float patrolInterval = 3f;
 
@@ -35,6 +37,8 @@ public class EnemyAI3D : MonoBehaviour
     {
         agent = GetComponent<NavMeshAgent>();
         agent.speed = patrolSpeed;
+
+        hearing = GetComponent<EnemyHearing>();
 
         SetNewPatrolDestination();
         patrolTimer = patrolInterval;
@@ -45,16 +49,26 @@ public class EnemyAI3D : MonoBehaviour
         if (player == null)
             return;
 
-        bool playerDetected = CheckScan();
+        bool seenPlayer = CheckScan();
+        bool heardPlayer = hearing != null && hearing.HeardPlayer;
+
+        bool playerDetected = seenPlayer || heardPlayer;
+
+        Debug.Log($"[AI] state={currentState} seen={seenPlayer} heard={heardPlayer} hearingRefNull={hearing == null} agentOnNavMesh={agent.isOnNavMesh}");
 
         if (currentState == State.Patrol)
         {
             if (playerDetected)
             {
-                Debug.Log("ĐÃ QUÉT ĐƯỢC PLAYER!");
+                Debug.Log(seenPlayer
+                    ? "ĐÃ QUÉT ĐƯỢC PLAYER!"
+                    : "NGHE THẤY TIẾNG BƯỚC CHÂN!");
 
                 currentState = State.Chase;
                 agent.speed = chaseSpeed;
+
+                if (hearing != null)
+                    hearing.ResetMeter();
             }
             else
             {
@@ -123,9 +137,8 @@ public class EnemyAI3D : MonoBehaviour
         agent.SetDestination(player.position);
     }
 
-    // Giữ nguyên logic quét (khoảng cách + góc + linecast) như bản gốc,
-    // chỉ đổi từ việc tự set state sang trả về bool, để dùng chung được
-    // cho cả lúc phát hiện (Patrol) lẫn lúc kiểm tra mất dấu (Chase).
+    // Giữ nguyên logic quét bằng mắt (khoảng cách + góc + linecast) như bản gốc,
+    // chỉ đổi từ việc tự set state sang trả về bool.
     bool CheckScan()
     {
         Vector3 direction =
@@ -183,11 +196,16 @@ public class EnemyAI3D : MonoBehaviour
 
         int segments = 36;
 
+        // Giới hạn 360 để tránh vẽ chồng lặp khi scanAngle > 360
+        float clampedAngle = Mathf.Min(scanAngle, 360f);
+
+        float halfAngle = clampedAngle / 2f;
+
         Vector3 previousPoint =
             origin +
             Quaternion.Euler(
                 0f,
-                -90f,
+                -halfAngle,
                 0f
             ) *
             transform.forward *
@@ -196,8 +214,8 @@ public class EnemyAI3D : MonoBehaviour
         for (int i = 1; i <= segments; i++)
         {
             float angle =
-                -90f +
-                (180f / segments) * i;
+                -halfAngle +
+                (clampedAngle / segments) * i;
 
             Vector3 direction =
                 Quaternion.Euler(
@@ -220,31 +238,35 @@ public class EnemyAI3D : MonoBehaviour
             previousPoint = point;
         }
 
-        Vector3 left =
-            Quaternion.Euler(
-                0f,
-                -90f,
-                0f
-            ) *
-            transform.forward;
+        // Nếu là 360° (vòng tròn kín) thì không cần vẽ 2 đường viền trái/phải
+        if (clampedAngle < 360f)
+        {
+            Vector3 left =
+                Quaternion.Euler(
+                    0f,
+                    -halfAngle,
+                    0f
+                ) *
+                transform.forward;
 
-        Vector3 right =
-            Quaternion.Euler(
-                0f,
-                90f,
-                0f
-            ) *
-            transform.forward;
+            Vector3 right =
+                Quaternion.Euler(
+                    0f,
+                    halfAngle,
+                    0f
+                ) *
+                transform.forward;
 
-        Gizmos.DrawLine(
-            origin,
-            origin + left * scanDistance
-        );
+            Gizmos.DrawLine(
+                origin,
+                origin + left * scanDistance
+            );
 
-        Gizmos.DrawLine(
-            origin,
-            origin + right * scanDistance
-        );
+            Gizmos.DrawLine(
+                origin,
+                origin + right * scanDistance
+            );
+        }
 
         if (player != null)
         {
