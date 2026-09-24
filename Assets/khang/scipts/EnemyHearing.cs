@@ -21,6 +21,9 @@ public class EnemyHearing : MonoBehaviour
     // EnemyAI3D đọc giá trị này mỗi frame để biết có nên chuyển sang Chase không
     public bool HeardPlayer { get; private set; }
 
+    // Vị trí cuối cùng NGHE thấy player (chỉ cập nhật khi HeardPlayer == true)
+    public Vector3 LastHeardPosition { get; private set; }
+
     void Start()
     {
         if (player != null)
@@ -48,6 +51,9 @@ public class EnemyHearing : MonoBehaviour
         HeardPlayer =
             distance <= hearingRadius &&
             playerSpeed >= minPlayerSpeedToMakeNoise;
+
+        if (HeardPlayer)
+            LastHeardPosition = player.position;
     }
 
     // Giữ lại để tương thích với EnemyAI3D (không còn ý nghĩa tích luỹ nữa,

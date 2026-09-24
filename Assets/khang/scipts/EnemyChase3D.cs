@@ -17,10 +17,16 @@ public class EnemyAI3D : MonoBehaviour
     public float scanDistance = 15f;
     public float scanAngle = 360f;
 
+    [Header("Tìm kiếm khi mất dấu bằng mắt")]
+    // Thời gian (giây) enemy đứng lại tìm kiếm tại vị trí cuối cùng thấy player
+    // trước khi bỏ cuộc và quay về tuần tra.
+    public float searchDuration = 4f;
+
     private enum State
     {
         Patrol,
-        Chase
+        Chase,
+        Search
     }
 
     private State currentState = State.Patrol;
@@ -32,6 +38,14 @@ public class EnemyAI3D : MonoBehaviour
 
     private float patrolTimer;
     private const float patrolInterval = 3f;
+
+    // Vị trí cuối cùng phát hiện player (bằng mắt hoặc bằng tai), dùng khi cần đi tìm
+    private Vector3 lastKnownPosition;
+
+    // true nếu lần phát hiện gần nhất vẫn còn hiệu lực (thấy hoặc nghe), dùng để quyết định có Search hay không
+    private bool hadValidDetection = false;
+
+    private float searchTimer;
 
     void Start()
     {
@@ -54,7 +68,18 @@ public class EnemyAI3D : MonoBehaviour
 
         bool playerDetected = seenPlayer || heardPlayer;
 
-        Debug.Log($"[AI] state={currentState} seen={seenPlayer} heard={heardPlayer} hearingRefNull={hearing == null} agentOnNavMesh={agent.isOnNavMesh}");
+        // Ghi nhận vị trí cuối cùng phát hiện được (ưu tiên bằng mắt vì chính xác hơn,
+        // nếu chỉ nghe thấy thì dùng vị trí nghe được)
+        if (seenPlayer)
+        {
+            lastKnownPosition = player.position;
+            hadValidDetection = true;
+        }
+        else if (heardPlayer && hearing != null)
+        {
+            lastKnownPosition = hearing.LastHeardPosition;
+            hadValidDetection = true;
+        }
 
         if (currentState == State.Patrol)
         {
@@ -66,9 +91,6 @@ public class EnemyAI3D : MonoBehaviour
 
                 currentState = State.Chase;
                 agent.speed = chaseSpeed;
-
-                if (hearing != null)
-                    hearing.ResetMeter();
             }
             else
             {
@@ -82,8 +104,21 @@ public class EnemyAI3D : MonoBehaviour
                 // NavMeshAgent tự tính đường ngắn nhất tới player mỗi frame
                 ChasePlayer();
             }
+            else if (hadValidDetection)
+            {
+                // Vừa mất dấu (do nhìn hoặc do nghe) -> tính đường ngắn nhất
+                // tới vị trí cuối cùng phát hiện được để tìm kiếm
+                Debug.Log("MẤT DẤU - ĐI TỚI VỊ TRÍ CUỐI CÙNG PHÁT HIỆN ĐỂ TÌM");
+
+                currentState = State.Search;
+                agent.SetDestination(lastKnownPosition);
+                searchTimer = searchDuration;
+
+                hadValidDetection = false;
+            }
             else
             {
+                // Trường hợp hiếm: chưa từng có phát hiện hợp lệ nào -> về thẳng Patrol
                 Debug.Log("MẤT DẤU PLAYER - QUAY VỀ TUẦN TRA");
 
                 currentState = State.Patrol;
@@ -91,6 +126,33 @@ public class EnemyAI3D : MonoBehaviour
 
                 SetNewPatrolDestination();
                 patrolTimer = patrolInterval;
+            }
+        }
+        else if (currentState == State.Search)
+        {
+            if (playerDetected)
+            {
+                // Tìm lại được player trong lúc đang tìm kiếm -> đuổi tiếp ngay
+                Debug.Log("TÌM LẠI ĐƯỢC PLAYER!");
+
+                currentState = State.Chase;
+                agent.speed = chaseSpeed;
+            }
+            else
+            {
+                searchTimer -= Time.deltaTime;
+
+                if (searchTimer <= 0f)
+                {
+                    // Tìm không thấy sau searchDuration giây -> bỏ cuộc, về tuần tra
+                    Debug.Log("KHÔNG TÌM THẤY PLAYER - QUAY VỀ TUẦN TRA");
+
+                    currentState = State.Patrol;
+                    agent.speed = patrolSpeed;
+
+                    SetNewPatrolDestination();
+                    patrolTimer = patrolInterval;
+                }
             }
         }
     }
@@ -276,6 +338,13 @@ public class EnemyAI3D : MonoBehaviour
                 origin,
                 player.position
             );
+        }
+
+        // Vị trí cuối cùng thấy player (khi đang ở state Search)
+        if (currentState == State.Search)
+        {
+            Gizmos.color = Color.red;
+            Gizmos.DrawWireSphere(lastKnownPosition, 0.5f);
         }
     }
 }
