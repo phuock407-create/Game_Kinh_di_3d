@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.AI;
 
 [RequireComponent(typeof(NavMeshAgent))]
-public class EnemyAI3D : MonoBehaviour
+public class EnemyAI3D : MonoBehaviour, IStunnable
 {
     public Transform player;
 
@@ -26,7 +26,8 @@ public class EnemyAI3D : MonoBehaviour
     {
         Patrol,
         Chase,
-        Search
+        Search,
+        Stunned
     }
 
     private State currentState = State.Patrol;
@@ -47,6 +48,9 @@ public class EnemyAI3D : MonoBehaviour
 
     private float searchTimer;
 
+    // Thời gian choáng còn lại (giây), chỉ có ý nghĩa khi currentState == Stunned
+    private float stunTimer;
+
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
@@ -58,8 +62,45 @@ public class EnemyAI3D : MonoBehaviour
         patrolTimer = patrolInterval;
     }
 
+    // Gọi từ bên ngoài (ví dụ SaltBagProjectile) để làm enemy choáng trong duration giây.
+    // Trong lúc choáng enemy đứng yên, không nhìn, không nghe, không đuổi.
+    public void Stun(float duration)
+    {
+        Debug.Log($"ENEMY BỊ CHOÁNG {duration}s!");
+
+        currentState = State.Stunned;
+        stunTimer = duration;
+
+        agent.isStopped = true;
+        agent.velocity = Vector3.zero;
+    }
+
     void Update()
     {
+        // Xử lý choáng trước tiên, không phụ thuộc vào player
+        if (currentState == State.Stunned)
+        {
+            stunTimer -= Time.deltaTime;
+
+            if (stunTimer <= 0f)
+            {
+                Debug.Log("ENEMY HẾT CHOÁNG!");
+
+                agent.isStopped = false;
+                agent.speed = patrolSpeed;
+
+                // Quay về Patrol, nếu player vẫn trong tầm thấy/nghe thì các frame sau
+                // sẽ tự chuyển lại sang Chase
+                currentState = State.Patrol;
+                hadValidDetection = false;
+
+                SetNewPatrolDestination();
+                patrolTimer = patrolInterval;
+            }
+
+            return;
+        }
+
         if (player == null)
             return;
 

@@ -7,6 +7,12 @@ public class SaltBagProjectile : MonoBehaviour
     // Tự huỷ sau chừng này giây nếu không trúng gì, tránh rác trong scene
     public float lifeTime = 5f;
 
+    // Thời gian (giây) quái bị choáng khi bị trúng muối
+    public float stunDuration = 3f;
+
+    // Tag của các loại quái (gán tag này cho mọi loại quái)
+    public string enemyTag = "Enemy";
+
     void Start()
     {
         Destroy(gameObject, lifeTime);
@@ -14,12 +20,23 @@ public class SaltBagProjectile : MonoBehaviour
 
     void OnCollisionEnter(Collision collision)
     {
-        if (collision.transform.CompareTag("Enemy"))
-        {
-            Debug.Log("NÉM TRÚNG ENEMY!");
+        // Nhận diện quái bằng tag (kiểm tra cả object trúng lẫn object gốc,
+        // phòng khi Collider nằm ở object con còn tag đặt ở object cha)
+        bool hitEnemy =
+            collision.transform.CompareTag(enemyTag) ||
+            collision.transform.root.CompareTag(enemyTag);
 
-            // TODO: chỗ này sau này có thể thêm hiệu ứng, gây choáng,
-            // hoặc tạo thêm 1 điểm gây tiếng động để enemy khác chú ý tới.
+        if (hitEnemy)
+        {
+            Debug.Log("NÉM TRÚNG QUÁI!");
+
+            // Mỗi loại quái tự quyết định cách phản ứng qua interface IStunnable
+            IStunnable stunnable = collision.transform.GetComponentInParent<IStunnable>();
+
+            if (stunnable != null)
+                stunnable.Stun(stunDuration);
+            else
+                Debug.LogWarning("Quái có tag Enemy nhưng chưa implement IStunnable nên không bị choáng!");
 
             Destroy(gameObject);
         }
